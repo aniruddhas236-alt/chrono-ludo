@@ -70,3 +70,75 @@
 <script src="script.js"></script>
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chrono Clash – Ludo</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1><span class="logo-ico">⏳</span> Chrono Clash</h1>
+  <div id="players"></div>
+  <div class="tools">
+    <button id="restart" class="tool" title="Restart game">↻ Restart</button>
+    <button id="menu" class="tool" title="Game settings">☰ Menu</button>
+    <button id="mute" class="tool" aria-label="Toggle sound">🔊</button>
+  </div>
+</header>
+<main>
+  <div id="board"></div>
+  <aside>
+    <div id="deck">
+      <div class="pilewrap">
+        <div id="pile" aria-hidden="true"><i></i><i></i><i></i></div>
+        <small id="left"></small>
+        <button id="drawBtn" disabled>Draw a card</button>
+      </div>
+      <div id="card" class="card"></div>
+    </div>
+    <div id="neg" class="neg locked"></div>
+    <p id="hint"></p>
+    <ul id="log"></ul>
+  </aside>
+</main>
+
+<div id="toast"></div>
+<div id="overlay">
+  <div class="panel">
+    <div class="brand"><div class="hg">⏳</div><h2 id="title">Chrono Clash</h2></div>
+    <p id="sub">The classic Ludo race, with a twist of time.</p>
+    <div class="group"><span>Game type</span><div class="seg" data-key="mode"><button data-v="0">🃏 Cards</button><button data-v="1">🎲 Classic dice</button></div></div>
+    <small id="lvl" class="note"></small>
+    <div class="group"><span>Human players</span><div class="seg" data-grp="h"><button data-v="0">0</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button></div></div>
+    <div class="group"><span>Computer players</span><div class="seg" data-grp="c"><button data-v="0">0</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
+    <div class="group"><span>Player setup</span><button id="shuffleCol" class="ghost mini">🎨 Shuffle colours</button></div>
+    <div id="seats"></div>
+    <div class="group"><span>Tokens each</span><div class="seg" data-key="t"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button></div></div>
+    <div class="group"><span>Win by</span><div class="seg" data-key="win"><button data-v="0">All home</button><button data-v="1">First home</button></div></div>
+    <div class="group"><span>Bonus turns</span><div class="seg" data-key="bon"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+    <div class="group"><span>Game speed</span><div class="seg" data-key="sp"><button data-v="0">Normal</button><button data-v="1">Fast</button><button data-v="2">Turbo</button></div></div>
+    <details><summary>How to play</summary>
+    <ul class="rules">
+      <li><b>Dice mode:</b> roll 1-6. A <b>6</b> frees a token and gives another roll</li>
+      <li><b>Card mode: +1 to +9</b> move a token forward (exact roll needed to finish)</li>
+      <li><b>-1, -2, -3</b> push back any token. They join the draw once <b>every player</b> has a token past square 5</li>
+      <li><b>🔓 Jailbreak</b> frees a token. Stuck in jail? You get 3 draws</li>
+      <li><b>🔄 Swap</b> trade places with a rival, <b>💥 Eliminate</b> sends a rival to jail</li>
+      <li><b>🛡️ Shield</b> protects a token until your next turn, <b>⛔ Skip</b> next player loses a turn</li>
+      <li><b>🔁 Repeat</b> play again, <b>🔃 Reverse</b> flips turn order, <b>🌋 Quake</b> slides everyone back 3</li>
+      <li>⚡ Boost jumps you forward 5, 🕳️ Trap drops you back 4</li>
+      <li>Capturing or reaching home gives a bonus turn. Two of your tokens on one square can't be captured</li>
+      <li>★ squares are safe from capture and card attacks</li>
+    </ul></details>
+    <small id="warn" class="note"></small>
+    <button id="startBtn">▶ Start game</button>
+    <button id="closeBtn" class="ghost hide">Resume current game</button>
+  </div>
+</div>
+<script src="script.js"></script>
+</body>
+</html>
