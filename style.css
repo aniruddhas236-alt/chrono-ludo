@@ -152,3 +152,30 @@ button:focus-visible{outline:3px solid #7fe3ff;outline-offset:2px}
 .chip.on{animation:glow 1.4s infinite}
 @keyframes glow{50%{box-shadow:0 0 12px var(--col)}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.card.flipped .inner{transform:rotateY(180deg)}}
+
+/* ---- Chrono Clash additions ---- */
+.logo-ico{display:inline-block;animation:spinhg 6s linear infinite}
+@keyframes spinhg{to{transform:rotate(360deg)}}
+h1{background:linear-gradient(90deg,#ffd166,#ff7e5f);-webkit-background-clip:text;background-clip:text;color:transparent}
+.logo-ico{-webkit-text-fill-color:initial}
+.panel{max-width:30rem;width:100%;max-height:94vh;overflow:auto}
+.brand{display:flex;align-items:center;gap:.6rem}
+.brand .hg{font-size:2.4rem;animation:spinhg 6s linear infinite}
+.panel h2{background:linear-gradient(90deg,#c9482a,#e0a21a);-webkit-background-clip:text;background-clip:text;color:transparent}
+.group{gap:.6rem;flex-wrap:wrap}
+.seg button{padding:.45rem .8rem}
+.note{color:#4a5a66;font-weight:600}
+#startBtn:disabled{opacity:.4;cursor:not-allowed}
+.mini{padding:.3rem .7rem;font-size:.9rem}
+#seats{display:grid;gap:.5rem}
+.seat{border:2px solid var(--col);border-radius:12px;padding:.5rem;display:grid;gap:.4rem;background:#fff6}
+.seat.offseat{opacity:.45;border-style:dashed}
+.shead{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem}
+.shead b{background:var(--col);color:#10202b;border-radius:8px;padding:.1rem .5rem}
+.shead input{flex:1;min-width:5rem;border:2px solid #10202b33;border-radius:8px;padding:.3rem .5rem;font:inherit;background:#fff}
+.seg.types button{padding:.3rem .5rem;font-size:.8rem}
+.sw{display:flex;gap:.35rem;flex-wrap:wrap}
+.swatch{width:1.8rem;height:1.8rem;border-radius:50%;border:3px solid #fff;background:var(--col);box-shadow:0 0 0 1px #10202b44;cursor:pointer;padding:0}
+.swatch.on{box-shadow:0 0 0 3px #10202b;transform:scale(1.12)}
+.jail.unused{opacity:.3}
+details summary{cursor:pointer;font-weight:700}
