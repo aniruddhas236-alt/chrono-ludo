@@ -3,8 +3,10 @@ const PATH = [[6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],
 const HOME = [0,1,2,3].map(p => [1,2,3,4,5].map(i => [[7,i],[i,7],[7,14-i],[14-i,7]][p]));
 const FIN = [[7,6],[6,7],[7,8],[8,7]];
 const JAIL = [[0,0],[0,9],[9,9],[9,0]];
-const COLORS = ['#e4572e','#2fa36b','#f2b134','#3a7bd5'];
-const NAMES = ['Red','Green','Gold','Blue'];
+const PAL = [['#e4572e','Red'],['#2fa36b','Green'],['#f2b134','Gold'],['#3a7bd5','Blue'],['#8e44ad','Purple'],['#e84393','Pink'],['#17a2b8','Teal'],['#f57c00','Orange']];
+let COLORS = [], NAMES = [], SEAT = [0,1,2,3], spd = 1;   // per-player colour/name; SEAT maps player -> board corner
+const off = p => 13 * SEAT[p];
+const TYPES = ['Off','Human','Easy CPU','Smart CPU'];
 const SAFE = new Set([0,8,13,21,26,34,39,47]);
 const BOOST = new Set([4,17,30,43]), TRAP = new Set([11,24,37,50]);
 const NEG_UNLOCK = 5;   // every player's lead token must be past this square before negatives appear
@@ -14,12 +16,12 @@ const INFO = {
   elim:['💥','Eliminate','Send a rival to jail'], shield:['🛡️','Shield','Protect a token'],
   rev:['🔃','Reverse','Flip turn order'], quake:['🌋','Quake','Everyone slides back 3']
 };
-const cfg = {n:4, t:4, m:0, d:1};
-try { Object.assign(cfg, JSON.parse(localStorage.getItem('jl-cfg') || '{}')); } catch (e) {}
+const cfg = {t:4, mode:0, sp:0, win:0, bon:1, seats:[{type:1,col:0,name:''},{type:3,col:1,name:''},{type:0,col:2,name:''},{type:0,col:3,name:''}]};
+try { Object.assign(cfg, JSON.parse(localStorage.getItem('cc-cfg') || '{}')); } catch (e) {}
 let G = null, all = [], logs = [], audio, muted = false, epoch = 0, cardId = 0, jailEls = [];
 const ABORT = {};
 // sleep aborts when the game is restarted so old async chains die quietly
-const sleep = ms => { const e = epoch; return new Promise((res, rej) => setTimeout(() => e === epoch ? res() : rej(ABORT), ms)); };
+const sleep = ms => { const e = epoch; return new Promise((res, rej) => setTimeout(() => e === epoch ? res() : rej(ABORT), ms * spd)); };
 const guard = fn => async (...a) => { try { return await fn(...a); } catch (e) { if (e !== ABORT) throw e; } };
 
 function beep(f, d = .08, ty = 'sine') {
@@ -37,22 +39,57 @@ function shake() { const b = $('#board'); b.classList.remove('shake'); b.offsetW
 $('#mute').onclick = e => { muted = !muted; e.target.textContent = muted ? '🔇' : '🔊'; };
 
 /* ---------- menu / settings ---------- */
+const pname = i => cfg.seats[i].name.trim() || PAL[cfg.seats[i].col][1];
 function syncSeg() {
-  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b =>
+  document.querySelectorAll('.seg[data-key]').forEach(seg => seg.querySelectorAll('button').forEach(b =>
     b.classList.toggle('on', +b.dataset.v === +cfg[seg.dataset.key])));
-  $('#lvlGroup').classList.toggle('hide', cfg.m != 1);
+  const cnt = ty => cfg.seats.filter(s => ty(s.type)).length;
+  const h = cnt(t => t == 1), c = cnt(t => t >= 2);
+  document.querySelectorAll('.seg[data-grp]').forEach(seg => seg.querySelectorAll('button').forEach(b =>
+    b.classList.toggle('on', +b.dataset.v === (seg.dataset.grp == 'h' ? h : c))));
+  $('#seats').innerHTML = cfg.seats.map((s, i) => `<div class="seat ${s.type ? '' : 'offseat'}" style="--col:${PAL[s.col][0]}">
+    <div class="shead"><b>P${i + 1}</b><input maxlength="10" data-i="${i}" placeholder="${PAL[s.col][1]}" value="${s.name.replace(/"/g, '')}">
+    <div class="seg types">${TYPES.map((n, v) => `<button data-i="${i}" data-ty="${v}" class="${s.type == v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+    <div class="sw">${PAL.map((p, c) => `<button class="swatch ${s.col == c ? 'on' : ''}" data-i="${i}" data-c="${c}" style="--col:${p[0]}" title="${p[1]}" aria-label="${p[1]}"></button>`).join('')}</div></div>`).join('');
+  const act = cnt(t => t > 0);
+  $('#startBtn').disabled = act < 2;
+  $('#warn').textContent = act < 2 ? 'Pick at least 2 players' : act + ' players: ' + cfg.seats.map((s, i) => s.type ? (s.type > 1 ? '🤖 ' : '') + pname(i) : '').filter(Boolean).join(', ');
+  $('#lvl').textContent = cfg.mode ? '🎲 Roll the dice. A 6 frees a token and gives another roll.' : '🃏 Draw cards: power-ups, attacks, swaps and more.';
 }
-document.querySelectorAll('.seg').forEach(seg => seg.onclick = e => {
+document.querySelectorAll('.seg[data-key]').forEach(seg => seg.onclick = e => {
   if (e.target.tagName != 'BUTTON') return;
   cfg[seg.dataset.key] = +e.target.dataset.v;
   syncSeg();
 });
+document.querySelectorAll('.seg[data-grp]').forEach(seg => seg.onclick = e => {
+  if (e.target.tagName != 'BUTTON') return;
+  let h = +$('.seg[data-grp=h] .on').dataset.v, c = +$('.seg[data-grp=c] .on').dataset.v;
+  const v = +e.target.dataset.v;
+  if (seg.dataset.grp == 'h') { h = v; if (h + c > 4) c = 4 - h; } else { c = v; if (h + c > 4) h = 4 - c; }
+  cfg.seats.forEach((s, i) => s.type = i < h ? 1 : i < h + c ? 3 : 0);
+  syncSeg();
+});
+$('#seats').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const i = +b.dataset.i;
+  if (b.dataset.ty != null) cfg.seats[i].type = +b.dataset.ty;
+  else if (b.dataset.c != null) {   // colours stay unique: swap with whoever holds it
+    const c = +b.dataset.c, o = cfg.seats.findIndex((s, j) => j != i && s.col == c);
+    if (o >= 0) cfg.seats[o].col = cfg.seats[i].col;
+    cfg.seats[i].col = c;
+  }
+  syncSeg();
+});
+$('#seats').addEventListener('input', e => { if (e.target.tagName == 'INPUT') cfg.seats[+e.target.dataset.i].name = e.target.value; });
+$('#shuffleCol').onclick = () => {
+  const cols = shuffle(PAL.map((_, i) => i)); cfg.seats.forEach((s, i) => s.col = cols[i]); syncSeg();
+};
 function openMenu(over) {
   const live = G && G.phase != 'over';
-  $('#title').textContent = over ? $('#title').textContent : 'Jailbreak Ludo';
+  $('#title').textContent = over ? $('#title').textContent : 'Chrono Clash';
   if (!over) {
-    $('#sub').textContent = live ? 'Starting a new game replaces the current one.' : 'Draw cards, not dice. Every token starts in jail.';
-    $('#startBtn').textContent = live ? 'New game' : 'Start game';
+    $('#sub').textContent = live ? 'Starting a new game replaces the current one.' : 'The classic Ludo race, with a twist of time.';
+    $('#startBtn').textContent = live ? 'New game' : '▶ Start game';
   }
   $('#closeBtn').classList.toggle('hide', !live);
   syncSeg();
@@ -74,21 +111,22 @@ function box(cls, x, y, w, h, p) {
   const d = document.createElement('div');
   d.className = cls;
   Object.assign(d.style, {left:x*100/15+'%', top:y*100/15+'%', width:w*100/15+'%', height:h*100/15+'%'});
-  if (p != null) d.style.setProperty('--col', COLORS[p]);
+  if (p != null) d.style.setProperty('--col', p);
   return d;
 }
 
 function buildBoard() {
   const b = $('#board');
   b.innerHTML = '';
-  jailEls = JAIL.map((j, p) => { const e = box('jail', j[1], j[0], 6, 6, p); b.append(e); return e; });
+  const sc = q => { const p = SEAT.indexOf(q); return p < 0 ? '#8a929b' : COLORS[p]; };
+  jailEls = JAIL.map((j, q) => { const e = box('jail' + (SEAT.includes(q) ? '' : ' unused'), j[1], j[0], 6, 6, sc(q)); b.append(e); return e; });
   b.append(box('center', 6, 6, 3, 3));
   PATH.forEach((c, i) => {
     const st = i % 13 == 0;
-    const d = box('cell' + (st ? ' start' : '') + (SAFE.has(i) ? ' safe' : '') + (BOOST.has(i) ? ' boost' : '') + (TRAP.has(i) ? ' trap' : ''), c[1], c[0], 1, 1, st ? i / 13 : null);
+    const d = box('cell' + (st ? ' start' : '') + (SAFE.has(i) ? ' safe' : '') + (BOOST.has(i) ? ' boost' : '') + (TRAP.has(i) ? ' trap' : ''), c[1], c[0], 1, 1, st ? sc(i / 13) : null);
     b.append(d);
   });
-  HOME.forEach((h, p) => h.forEach(c => b.append(box('cell home', c[1], c[0], 1, 1, p))));
+  HOME.forEach((h, q) => h.forEach(c => b.append(box('cell home', c[1], c[0], 1, 1, sc(q)))));
 }
 
 /* ---------- deck ---------- */
@@ -107,6 +145,7 @@ function mkDeck() {
 const best = p => Math.max(-1, ...all.filter(t => t.p == p).map(t => t.prog));
 const negOK = () => Array.from({length:G.n}, (_, p) => best(p)).every(b => b > NEG_UNLOCK);
 function nextCard() {
+  if (G.dice) return {t:'n', v:1 + (Math.random() * 6 | 0), dice:true};
   const ok = negOK(), held = [];
   for (;;) {
     if (!G.deck.length) G.deck = mkDeck();
@@ -118,7 +157,7 @@ function nextCard() {
 }
 
 /* ---------- card visuals ---------- */
-const BACK = '<div class="face back"><div class="logo"><span>🔒</span>JAILBREAK</div></div>';
+const BACK = '<div class="face back"><div class="logo"><span>⏳</span>CHRONO CLASH</div></div>';
 function setCard(front, kind) {
   const e = $('#card');
   e.className = 'card' + (kind ? ' k-' + kind + ' deal' : '');
@@ -134,6 +173,7 @@ function frontHTML(c) {
     center = `<div class="num">${label(c)}</div><div class="arrow">${up ? '▲' : '▼'}</div>`;
     ttl = up ? 'Move forward' : 'Push back';
     sub = up ? 'Advance one of your tokens' : "Hit any token, even yours";
+    if (c.dice) { corner = '🎲'; center = `<div class="num">${c.v}</div><div class="arrow">🎲</div>`; ttl = 'Dice roll'; sub = c.v == 6 ? 'Six! Frees a token, roll again' : 'Move a token'; }
   } else {
     const [i, n, d] = INFO[c.t];
     k = c.t; corner = i; center = `<div class="ico">${i}</div>`; ttl = n; sub = d;
@@ -161,12 +201,19 @@ function show(c) {
 
 /* ---------- game setup ---------- */
 function start() {
+  const act = cfg.seats.map((x, i) => i).filter(i => cfg.seats[i].type > 0);
+  if (act.length < 2) return;
   epoch++;
-  try { localStorage.setItem('jl-cfg', JSON.stringify(cfg)); } catch (e) {}
+  spd = [1, .5, .25][cfg.sp] || 1;
+  try { localStorage.setItem('cc-cfg', JSON.stringify(cfg)); } catch (e) {}
   document.querySelectorAll('.conf').forEach(c => c.remove());
+  const n = act.length;
+  SEAT = n == 2 ? [0, 2] : n == 3 ? [0, 1, 2] : [0, 1, 2, 3];
+  COLORS = act.map(i => PAL[cfg.seats[i].col][0]);
+  NAMES = act.map(i => pname(i));
   buildBoard();
   all = [];
-  for (let p = 0; p < cfg.n; p++) for (let k = 0; k < cfg.t; k++) {
+  for (let p = 0; p < n; p++) for (let k = 0; k < cfg.t; k++) {
     const t = {p, k, prog:-1, shield:false, el:document.createElement('div')};
     t.el.className = 'token';
     t.el.style.setProperty('--col', COLORS[p]);
@@ -174,8 +221,9 @@ function start() {
     $('#board').append(t.el);
     all.push(t);
   }
-  G = {n:cfg.n, t:cfg.t, turn:0, deck:mkDeck(), card:null, phase:'wait', tg:[], skip:[], dir:1, tries:1, src:null,
-       cpu:Array.from({length:cfg.n}, (_, p) => cfg.m == 1 && p > 0), lvl:cfg.d, neg:false};
+  const ty = act.map(i => cfg.seats[i].type);
+  G = {n, t:cfg.t, turn:0, deck:mkDeck(), card:null, phase:'wait', tg:[], skip:[], dir:1, tries:1, src:null,
+       cpu:ty.map(x => x >= 2), lvl:ty.map(x => x == 3 ? 1 : 0), neg:false, dice:cfg.mode == 1, win:cfg.win, bon:cfg.bon};
   logs = [];
   resetCard();
   $('#overlay').classList.add('hide');
@@ -186,9 +234,9 @@ const isCpu = () => !!(G && G.cpu && G.cpu[G.turn] && G.phase != 'over');
 const mine = () => all.filter(t => t.p == G.turn);
 const foes = () => all.filter(t => t.p != G.turn);
 const ring = t => t.prog >= 0 && t.prog <= 50;
-const idx = t => (13 * t.p + t.prog) % 52;
+const idx = t => (off(t.p) + t.prog) % 52;
 const prot = t => !ring(t) || SAFE.has(idx(t)) || t.shield || all.some(o => o !== t && o.p == t.p && o.prog == t.prog);
-const swapOK = (a, b) => (idx(b) - 13 * a.p + 52) % 52 <= 50 && (idx(a) - 13 * b.p + 52) % 52 <= 50;
+const swapOK = (a, b) => (idx(b) - off(a.p) + 52) % 52 <= 50 && (idx(a) - off(b.p) + 52) % 52 <= 50;
 const label = c => c.t == 'n' ? (c.v > 0 ? '+' + c.v : '' + c.v) : INFO[c.t][1];
 
 function say(m) { logs.unshift(m); logs.length = Math.min(logs.length, 4); }
@@ -199,7 +247,7 @@ function hint(m) {
 function targets() {
   const c = G.card, m = mine(), f = foes();
   if (c.t == 'n') return c.v > 0
-    ? m.filter(t => t.prog >= 0 && t.prog + c.v <= 56)
+    ? m.filter(t => t.prog >= 0 ? t.prog + c.v <= 56 : (c.dice && c.v == 6))
     : m.filter(t => t.prog >= 1 && t.prog < 56).concat(f.filter(t => t.prog >= 1 && !prot(t)));
   if (c.t == 'jail') return m.filter(t => t.prog < 0);
   if (c.t == 'elim') return f.filter(t => ring(t) && !prot(t));
@@ -216,13 +264,13 @@ function startTurn() {
   G.src = null;
   G.tries = mine().some(t => t.prog >= 0 && t.prog < 56) ? 1 : 3;
   G.phase = 'draw';
-  const ok = negOK();
+  const ok = !G.dice && negOK();
   if (ok !== G.neg) {
     G.neg = ok;
     toast(ok ? '⚠️ Negative cards unlocked' : '🔒 Negative cards locked');
     beep(ok ? 220 : 440, .25, 'square');
   }
-  hint(NAMES[G.turn] + ', draw a card' + (G.tries > 1 ? ' (3 tries to find a Jailbreak)' : ''));
+  hint(NAMES[G.turn] + (G.dice ? ', roll the dice' : ', draw a card') + (G.tries > 1 ? (G.dice ? ' (3 tries to roll a 6)' : ' (3 tries to find a Jailbreak)') : ''));
   render();
   kick();
 }
@@ -242,7 +290,7 @@ function endTurn(extra) {
       }
     }
     startTurn();
-  }, 1000);
+  }, 1000 * spd);
 }
 
 function draw() {
@@ -330,7 +378,7 @@ const pick = guard(async t => {
   if (c.t == 'swap' && !G.src) { G.src = t; G.tg = targets(); hint('Now tap a rival to swap with'); render(); kick(); return; }
   G.phase = 'wait'; G.tg = []; render();
   if (c.t == 'n') {
-    const np = Math.max(t.prog + c.v, 0);
+    const np = t.prog < 0 ? 0 : Math.max(t.prog + c.v, 0);
     if (t.p == G.turn) bonus = await move(t, np);
     else { await walk(t, np); say(`${me} pushed a ${NAMES[t.p]} token back ${-c.v}`); }
   } else if (c.t == 'jail') {
@@ -340,12 +388,12 @@ const pick = guard(async t => {
   } else if (c.t == 'shield') {
     t.shield = true; toast('🛡️ Shielded'); beep(700, .15); say(`${me} shielded a token`); render(); await sleep(500);
   } else if (c.t == 'swap') {
-    const a = G.src, pa = (idx(t) - 13 * a.p + 52) % 52, pb = (idx(a) - 13 * t.p + 52) % 52;
+    const a = G.src, pa = (idx(t) - off(a.p) + 52) % 52, pb = (idx(a) - off(t.p) + 52) % 52;
     a.prog = pa; t.prog = pb; G.src = null; toast('🔄 Swap!'); beep(440, .2);
     say(`${me} swapped places with ${NAMES[t.p]}`); render(); await sleep(700);
   }
-  if (mine().every(x => x.prog == 56)) return win();
-  endTurn(bonus);
+  if (G.win == 1 ? mine().some(x => x.prog == 56) : mine().every(x => x.prog == 56)) return win();
+  endTurn((bonus && G.bon) || (c.dice && c.v == 6 && t.p == G.turn));
 });
 
 function win() {
@@ -353,14 +401,14 @@ function win() {
   for (let i = 0; i < 60; i++) {
     const c = document.createElement('i');
     c.className = 'conf';
-    c.style.cssText = `left:${Math.random() * 100}vw;background:${COLORS[i % 4]};animation-delay:${Math.random()}s`;
+    c.style.cssText = `left:${Math.random() * 100}vw;background:${COLORS[i % COLORS.length]};animation-delay:${Math.random()}s`;
     document.body.append(c); setTimeout(() => c.remove(), 4500);
   }
   [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, .25, 'triangle'), i * 160));
   render();
   const cpu = G.cpu[G.turn];
   $('#title').textContent = (cpu ? '🤖 ' : '') + NAMES[G.turn] + ' wins! 🎉';
-  $('#sub').textContent = 'All tokens made it home. Play again?';
+  $('#sub').textContent = G.win == 1 ? 'First token home takes the win. Play again?' : 'All tokens made it home. Play again?';
   $('#startBtn').textContent = 'Play again';
   $('#closeBtn').classList.add('hide');
   $('#overlay').classList.remove('hide');
@@ -374,12 +422,12 @@ function kick() {
     if (e !== epoch || !isCpu()) return;
     if (G.phase == 'draw') draw();
     else if (G.phase == 'pick') cpuPick();
-  }, 900 + Math.random() * 500);
+  }, (900 + Math.random() * 500) * spd);
 }
 
 function cpuPick() {
   let t;
-  if (!G.lvl) t = G.tg[Math.random() * G.tg.length | 0];
+  if (!G.lvl[G.turn]) t = G.tg[Math.random() * G.tg.length | 0];
   else t = G.tg.map(x => [score(x) + Math.random() * .5, x]).sort((a, b) => b[0] - a[0])[0][1];
   pick(t);
 }
@@ -387,12 +435,13 @@ function cpuPick() {
 function score(t) {
   const c = G.card, me = G.turn;
   if (c.t == 'n' && c.v > 0) {
+    if (t.prog < 0) return 8;
     const np = t.prog + c.v;
     let s = c.v * .2 + t.prog * .05;
     if (np == 56) s += 12;
     else if (np > 50) s += 6;
     else {
-      const i = (13 * t.p + np) % 52;
+      const i = (off(t.p) + np) % 52;
       if (SAFE.has(i)) s += 4;
       if (BOOST.has(i) && np + 5 <= 50) s += 5;
       if (TRAP.has(i)) s -= 5;
@@ -411,10 +460,10 @@ function score(t) {
   if (c.t == 'swap') {
     if (!G.src) {
       let g = -99;
-      foes().forEach(o => { if (ring(o) && !prot(o) && swapOK(t, o)) g = Math.max(g, (idx(o) - 13 * t.p + 52) % 52 - t.prog); });
+      foes().forEach(o => { if (ring(o) && !prot(o) && swapOK(t, o)) g = Math.max(g, (idx(o) - off(t.p) + 52) % 52 - t.prog); });
       return g;
     }
-    const a = G.src, mineGain = (idx(t) - 13 * a.p + 52) % 52 - a.prog, foeGain = (idx(a) - 13 * t.p + 52) % 52 - t.prog;
+    const a = G.src, mineGain = (idx(t) - off(a.p) + 52) % 52 - a.prog, foeGain = (idx(a) - off(t.p) + 52) % 52 - t.prog;
     return mineGain - foeGain * .5;
   }
   return 0;
@@ -422,8 +471,8 @@ function score(t) {
 
 /* ---------- render ---------- */
 function pos(t) {
-  if (t.prog < 0) return [JAIL[t.p][0] + 1.5 + (t.k >> 1) * 2, JAIL[t.p][1] + 1.5 + (t.k % 2) * 2, 'j' + t.p + t.k];
-  const c = t.prog <= 50 ? PATH[idx(t)] : t.prog <= 55 ? HOME[t.p][t.prog - 51] : FIN[t.p];
+  if (t.prog < 0) return [JAIL[SEAT[t.p]][0] + 1.5 + (t.k >> 1) * 2, JAIL[SEAT[t.p]][1] + 1.5 + (t.k % 2) * 2, 'j' + t.p + t.k];
+  const c = t.prog <= 50 ? PATH[idx(t)] : t.prog <= 55 ? HOME[SEAT[t.p]][t.prog - 51] : FIN[SEAT[t.p]];
   return [c[0], c[1], c.join()];
 }
 
@@ -438,14 +487,16 @@ function render() {
     t.el.classList.toggle('shield', t.shield);
     t.el.classList.toggle('done', t.prog == 56);
   }));
-  jailEls.forEach((e, p) => e.classList.toggle('active', G.phase != 'over' && p == G.turn));
+  jailEls.forEach((e, q) => e.classList.toggle('active', G.phase != 'over' && q == SEAT[G.turn]));
   $('#players').innerHTML = Array.from({length:G.n}, (_, p) =>
-    `${p ? '' : '<span class="dir">' + (G.dir > 0 ? '↻' : '↺') + '</span>'}<div class="chip ${p == G.turn ? 'on' : ''}" style="--col:${COLORS[p]}">${G.cpu[p] ? '🤖 ' : ''}${NAMES[p]}${cfg.m == 1 && p == 0 ? ' (You)' : ''} ${all.filter(t => t.p == p && t.prog == 56).length}/${G.t}</div>`).join('');
+    `${p ? '' : '<span class="dir">' + (G.dir > 0 ? '↻' : '↺') + '</span>'}<div class="chip ${p == G.turn ? 'on' : ''}" style="--col:${COLORS[p]}">${G.cpu[p] ? '🤖 ' : ''}${NAMES[p]} ${all.filter(t => t.p == p && t.prog == 56).length}/${G.t}</div>`).join('');
   $('#log').innerHTML = logs.map(l => `<li>${l}</li>`).join('');
   $('#drawBtn').disabled = G.phase != 'draw' || !human;
   $('#pile').classList.toggle('ready', G.phase == 'draw' && human);
-  $('#left').textContent = G.deck.length + ' cards left';
+  $('#left').textContent = G.dice ? 'Classic dice' : G.deck.length + ' cards left';
+  $('#drawBtn').textContent = G.dice ? '🎲 Roll dice' : 'Draw a card';
   const ok = negOK(), n = $('#neg');
-  n.className = 'neg ' + (ok ? 'open' : 'locked');
+  n.classList.toggle('hide', !!G.dice);
+  n.className = 'neg ' + (ok ? 'open' : 'locked') + (G.dice ? ' hide' : '');
   n.textContent = ok ? '⚠️ Negative cards active (-1, -2, -3)' : '🔒 Negatives unlock when every player passes square ' + NEG_UNLOCK;
 }
